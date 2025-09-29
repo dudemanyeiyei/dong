@@ -26,21 +26,25 @@ jobs:
 
       - name: Create RDP User with 6-Digit Numeric Password
         run: |
-          # Temporarily disable password complexity to allow numeric-only password
+          # Temporarily disable password complexity policy
           secedit /export /cfg C:\secpol.cfg
           (Get-Content C:\secpol.cfg).Replace("PasswordComplexity = 1","PasswordComplexity = 0") | Set-Content C:\secpol.cfg
           secedit /configure /db C:\Windows\Security\Database\secedit.sdb /cfg C:\secpol.cfg /areas SECURITYPOLICY
           gpupdate /force
 
-          # Generate numeric password with 6 digits
+          # Generate 6-digit numeric password
           $password = -join (1..6 | ForEach-Object { Get-Random -Minimum 0 -Maximum 10 })
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+
+          # Create RDP user
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
-          
+
+          # Save credentials to GitHub environment
           echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
 
+          # Verify user creation
           if (-not (Get-LocalUser -Name "RDP")) {
               Write-Error "User creation failed"
               exit 1
