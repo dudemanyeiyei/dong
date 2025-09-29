@@ -26,18 +26,13 @@ jobs:
 
       - name: Create RDP User with 6-Digit Numeric Password
         run: |
-          # --- Temporarily disable password complexity ---
-          secedit /export /cfg C:\secpol.cfg
-          (Get-Content C:\secpol.cfg).Replace("PasswordComplexity = 1","PasswordComplexity = 0") | Set-Content C:\secpol.cfg
-          secedit /configure /db C:\Windows\Security\Database\secedit.sdb /cfg C:\secpol.cfg /areas SECURITYPOLICY
-          gpupdate /force
-
+         
           # --- Generate 6-digit numeric password ---
-          $password = -join (1..6 | ForEach-Object { Get-Random -Minimum 0 -Maximum 10 })
+          $password = "passworD?"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
 
           # --- Create the RDP user ---
-          New-LocalUser -Name "RDP" -Password "passworD?" -AccountNeverExpires
+          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
 
           # --- Add user to groups ---
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
