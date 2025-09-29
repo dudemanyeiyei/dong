@@ -24,10 +24,16 @@ jobs:
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
           Restart-Service -Name TermService -Force
 
-      - name: Create RDP User with 8-Digit Numeric Password
+      - name: Create RDP User with 6-Digit Numeric Password
         run: |
-          # Generate numeric password with 8 digits
-          $password = -join (1..8 | ForEach-Object { Get-Random -Minimum 0 -Maximum 10 })
+          # Temporarily disable password complexity to allow numeric-only password
+          secedit /export /cfg C:\secpol.cfg
+          (Get-Content C:\secpol.cfg).Replace("PasswordComplexity = 1","PasswordComplexity = 0") | Set-Content C:\secpol.cfg
+          secedit /configure /db C:\Windows\Security\Database\secedit.sdb /cfg C:\secpol.cfg /areas SECURITYPOLICY
+          gpupdate /force
+
+          # Generate numeric password with 6 digits
+          $password = -join (1..6 | ForEach-Object { Get-Random -Minimum 0 -Maximum 10 })
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
@@ -39,6 +45,7 @@ jobs:
               Write-Error "User creation failed"
               exit 1
           }
+
 
       - name: Install Development Tools (Android Studio, VS Code, Android SDK, Flutter)
         run: |
