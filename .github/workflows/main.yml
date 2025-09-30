@@ -43,24 +43,67 @@ jobs:
           echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
           Write-Host "RDP user created successfully with password: $password"
 
-      - name: Install Development Tools (Flutter + Android + VS Code)
+      name: RDP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  secure-rdp:
+    runs-on: windows-latest
+    timeout-minutes: 3600
+
+    steps:
+      - name: Configure Core RDP Settings
         run: |
-          # Install Android Studio, VS Code, Flutter, Android SDK (via choco)
-          choco install -y androidstudio vscode flutter android-sdk
+          # Enable Remote Desktop and disable Network Level Authentication (optional)
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+                             -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                             -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                             -Name "SecurityLayer" -Value 0 -Force
+
+          # Configure firewall for RDP
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+          Restart-Service -Name TermService -Force
+
+      - name: Create RDP User with Hardcoded Password
+        run: |
+          $password = "passworD?"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+
+          # Create user
+          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
+
+          # Save credentials for workflow
+          echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
+          Write-Host "RDP user created successfully with password: $password"
+
+      - name: Install Development Tools (Flutter + Android + VS Code + Genymotion)
+        run: |
+          # Install Android Studio, VS Code, Flutter, Android SDK, Genymotion
+          choco install -y androidstudio vscode flutter android-sdk genymotion
 
           # Set environment variables
           $androidHome = "C:\Android\android-sdk"
           $flutterHome = "C:\tools\flutter"
+          $genymotionHome = "C:\Program Files\Genymobile\Genymotion"
 
           [System.Environment]::SetEnvironmentVariable("ANDROID_HOME", $androidHome, [System.EnvironmentVariableTarget]::Machine)
           [System.Environment]::SetEnvironmentVariable("FLUTTER_HOME", $flutterHome, [System.EnvironmentVariableTarget]::Machine)
+          [System.Environment]::SetEnvironmentVariable("GENYMOTION_HOME", $genymotionHome, [System.EnvironmentVariableTarget]::Machine)
 
-          # Add Android SDK and Flutter to PATH
+          # Add Android SDK, Flutter, Genymotion to PATH
           $envPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::Machine)
           $newPaths = @(
               "$androidHome\platform-tools",
               "$androidHome\cmdline-tools\latest\bin",
-              "$flutterHome\bin"
+              "$flutterHome\bin",
+              "$genymotionHome"
           )
           $updatedPath = ($envPath.Split(';') + $newPaths) -join ';'
           [System.Environment]::SetEnvironmentVariable("Path", $updatedPath, [System.EnvironmentVariableTarget]::Machine)
