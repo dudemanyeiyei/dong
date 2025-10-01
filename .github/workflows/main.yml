@@ -90,10 +90,19 @@ jobs:
 
       - name: Install Flutter SDK
         run: |
+          # Install Flutter via Chocolatey
           choco install flutter -y --no-progress
-          $flutterPath = "C:\tools\flutter\bin"
-          $env:PATH="$env:PATH;$flutterPath"
+
+          # Set system-wide environment variable for FLUTTER_ROOT
+          $flutterPath = "C:\tools\flutter"
+          [Environment]::SetEnvironmentVariable("FLUTTER_ROOT", $flutterPath, "Machine")
+
+          # Add Flutter bin to system PATH
+          $env:PATH="$env:PATH;$flutterPath\bin"
           [Environment]::SetEnvironmentVariable("PATH", $env:PATH, "Machine")
+
+          # Verify Flutter installation
+          flutter doctor -v
 
       - name: Establish Tailscale Connection
         run: |
