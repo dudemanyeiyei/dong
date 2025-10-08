@@ -55,55 +55,8 @@ jobs:
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
           Remove-Item $installerPath -Force
-
-      - name: Install VSCode
-        run: |
-          choco install vscode -y --no-progress --params="'/PinToTaskbar'"
-
-      - name: Install Qbittorrent
-        run: |
-          choco install qbittorrent -y --no-progress --params="'/PinToTaskbar'"
-
-      - name: Install Android SDK
-        run: |
-          choco install android-sdk -y --no-progress
-          $env:ANDROID_HOME="C:\ProgramData\chocolatey\lib\android-sdk\tools"
-          [Environment]::SetEnvironmentVariable("ANDROID_HOME", $env:ANDROID_HOME, "Machine")
-          $env:PATH="$env:PATH;$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\tools"
-          [Environment]::SetEnvironmentVariable("PATH", $env:PATH, "Machine")
-
-      - name: Install Bitwarden
-        run: |
-          choco install bitwarden -y --ia '/allusers' --no-progress
-
-      - name: Install Genymotion
-        run: |
-          $genyUrl = "https://dl.genymotion.com/releases/genymotion-3.9.0/genymotion-3.9.0.exe"
-          $installerPath = "$env:TEMP\genymotion.exe"
-          Invoke-WebRequest -Uri $genyUrl -OutFile $installerPath
-
-          choco install genymotion --yes --force --ignore-checksums --params="'/SILENT /NORESTART /DIR=`"C:\Genymotion`"'"
-
-          Remove-Item $installerPath -Force
-          $env:PATH="$env:PATH;C:\Genymotion"
-          [Environment]::SetEnvironmentVariable("PATH", $env:PATH, "Machine")
-
-      - name: Install Flutter SDK
-        run: |
-          # Install Flutter via Chocolatey
-          choco install flutter -y --no-progress
-
-          # Set system-wide environment variable for FLUTTER_ROOT
-          $flutterPath = "C:\tools\flutter"
-          [Environment]::SetEnvironmentVariable("FLUTTER_ROOT", $flutterPath, "Machine")
-
-          # Add Flutter bin to system PATH
-          $env:PATH="$env:PATH;$flutterPath\bin"
-          [Environment]::SetEnvironmentVariable("PATH", $env:PATH, "Machine")
-
-          # Verify Flutter installation
-          flutter doctor -v
-
+      
+      
       - name: Establish Tailscale Connection
         run: |
           # Bring up Tailscale with the provided auth key and set a unique hostname
