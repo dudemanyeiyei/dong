@@ -56,18 +56,6 @@ jobs:
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
           Remove-Item $installerPath -Force
 
-      
-      - name: Install Qbittorrent
-        run: |
-          choco install qbittorrent -y --no-progress --params="'/PinToTaskbar'"
-
-      
-      - name: Install Bitwarden
-        run: |
-          choco install bitwarden -y --ia '/allusers' --no-progress
-
-   
-   
       - name: Establish Tailscale Connection
         run: |
           # Bring up Tailscale with the provided auth key and set a unique hostname
@@ -100,6 +88,14 @@ jobs:
           }
           Write-Host "TCP connectivity successful!"
 
+      - name: Install Qbittorrent
+        run: |
+          choco install qbittorrent -y --no-progress --params="'/PinToTaskbar'"
+
+      
+      - name: Install Bitwarden
+        run: |
+          choco install bitwarden -y --ia '/allusers' --no-progress
 
 
       - name: Maintain Connection
