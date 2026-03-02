@@ -1,113 +1,120 @@
-name: RDP
+name: Secure RDP
 
 on:
   workflow_dispatch:
 
 jobs:
-  secure-rdp:
+  rdp:
     runs-on: windows-latest
     timeout-minutes: 3600
 
+    env:
+      RDP_USER: LORD
+      RDP_PASS: ${{ secrets.RDP_PASSWORD }}
+
     steps:
-      - name: Configure Core RDP Settings
-        run: |
-          # Enable Remote Desktop and disable Network Level Authentication (if needed)
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-                             -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                             -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                             -Name "SecurityLayer" -Value 0 -Force
 
-          # Remove any existing rule with the same name to avoid duplication
-          netsh advfirewall firewall delete rule name="RDP-Tailscale"
-          
-          # For testing, allow any incoming connection on port 3389
-          netsh advfirewall firewall add rule name="RDP-Tailscale" `
-            dir=in action=allow protocol=TCP localport=3389
+    - name: Enable RDP (Secure)
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+          -Name "fDenyTSConnections" -Value 0 -Force
 
-          # (Optional) Restart the Remote Desktop service to ensure changes take effect
-          Restart-Service -Name TermService -Force
-          
-      - name: Create RDP User with Secure Password
-        run: |
-          Add-Type -AssemblyName System.Security
-          $password = "passworD?"  # Change this to your desired password
+        # Keep NLA enabled
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+          -Name "UserAuthentication" -Value 1 -Force
 
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+          -Name "SecurityLayer" -Value 1 -Force
 
-          New-LocalUser -Name "LORD" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "LORD"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "LORD"
+        netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
 
-          echo "RDP_CREDS=User: LORD | Password: $password" >> $env:GITHUB_ENV
+        Restart-Service -Name TermService -Force
 
-          if (-not (Get-LocalUser -Name "LORD")) {
-              Write-Error "User creation failed"
+    - name: Create RDP User (Using Env Password)
+      run: |
+        $username = "${env:RDP_USER}"
+        $password = "${env:RDP_PASS}"
+
+        if (-not $password) {
+          Write-Error "RDP password is not set!"
           exit 1
-          }
+        }
 
-      - name: Install Tailscale
-        run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
-          
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
+        $securePass = ConvertTo-SecureString $password -AsPlainText -Force
 
-      - name: Establish Tailscale Connection
-        run: |
-          # Bring up Tailscale with the provided auth key and set a unique hostname
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE }} --hostname=gh-runner-$env:GITHUB_RUN_ID
-          
-          # Wait for Tailscale to assign an IP
-          $tsIP = $null
-          $retries = 0
-          while (-not $tsIP -and $retries -lt 10) {
-              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-              Start-Sleep -Seconds 5
-              $retries++
-          }
-          
-          if (-not $tsIP) {
-              Write-Error "Tailscale IP not assigned. Exiting."
-              exit 1
-          }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-      
-      - name: Verify RDP Accessibility
-        run: |
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          
-          # Test connectivity using Test-NetConnection against the Tailscale IP on port 3389
-          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
-          if (-not $testResult.TcpTestSucceeded) {
-              Write-Error "TCP connection to RDP port 3389 failed"
-              exit 1
-          }
-          Write-Host "TCP connectivity successful!"
+        # Remove existing user if exists (prevents conflict)
+        if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) {
+          Remove-LocalUser -Name $username
+        }
 
-      - name: Install Qbittorrent
-        run: |
-          choco install qbittorrent -y --no-progress --params="'/PinToTaskbar'"
+        New-LocalUser -Name $username -Password $securePass -AccountNeverExpires
+        Add-LocalGroupMember -Group "Administrators" -Member $username
+        Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
 
-      
-      - name: Install Bitwarden
-        run: |
-          choco install bitwarden -y --ia '/allusers' --no-progress
+    - name: Enable Dark Mode
+      run: |
+        Set-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize `
+          -Name AppsUseLightTheme -Value 0 -Type Dword
 
+        Set-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize `
+          -Name SystemUsesLightTheme -Value 0 -Type Dword
 
-      - name: Maintain Connection
-        run: |
-          Write-Host "`n=== RDP ACCESS ==="
-          Write-Host "Address: $env:TAILSCALE_IP"
-          Write-Host "Username: RDP"
-          Write-Host "Password: $(echo $env:RDP_CREDS)"
-          Write-Host "==================`n"
-          
-          # Keep runner active indefinitely (or until manually cancelled)
-          while ($true) {
-              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
-              Start-Sleep -Seconds 300
-          }
+    - name: Disable Windows Tips
+      run: |
+        New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager `
+          -Name SubscribedContent-310093Enabled -Value 0 -PropertyType DWord -Force
+
+        New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager `
+          -Name SystemPaneSuggestionsEnabled -Value 0 -PropertyType DWord -Force
+
+    - name: Configure Browsers
+      run: |
+        # Edge policies
+        $edge = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+        New-Item -Path $edge -Force | Out-Null
+        New-ItemProperty -Path $edge -Name HideFirstRunExperience -Value 1 -PropertyType DWord -Force
+        New-ItemProperty -Path $edge -Name ForceDarkMode -Value 1 -PropertyType DWord -Force
+
+        # Chrome policies
+        $chrome = "HKLM:\SOFTWARE\Policies\Google\Chrome"
+        New-Item -Path $chrome -Force | Out-Null
+        New-ItemProperty -Path $chrome -Name HideFirstRunExperience -Value 1 -PropertyType DWord -Force
+
+    - name: Install Tailscale
+      run: |
+        $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
+        $file = "$env:TEMP\tailscale.msi"
+
+        Invoke-WebRequest $url -OutFile $file
+        Start-Process msiexec.exe -ArgumentList "/i `"$file`" /quiet /norestart" -Wait
+        Remove-Item $file
+
+    - name: Connect Tailscale
+      run: |
+        & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
+          --authkey=${{ secrets.TAILSCALE }} `
+          --hostname=gh-${{ github.run_id }}
+
+        Start-Sleep 10
+
+        $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+        echo "TS_IP=$ip" >> $env:GITHUB_ENV
+
+    - name: Install Tools
+      run: |
+        choco install -y vscode bitwarden
+
+    - name: Show Connection Info
+      run: |
+        Write-Host "`n====== RDP DETAILS ======"
+        Write-Host "IP: $env:TS_IP"
+        Write-Host "User: $env:RDP_USER"
+        Write-Host "Pass: (hidden in logs)"
+        Write-Host "========================`n"
+
+    - name: Keep Alive
+      run: |
+        while ($true) {
+          Write-Host "Running at $(Get-Date)"
+          Start-Sleep -Seconds 300
+        }
