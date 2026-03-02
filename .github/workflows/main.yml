@@ -10,7 +10,7 @@ jobs:
 
     env:
       RDP_USER: LORD
-      RDP_PASS: ${{ secrets.RDP_PASSWORD }}
+      RDP_PASS: Password?
 
     steps:
 
